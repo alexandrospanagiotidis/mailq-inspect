@@ -1,0 +1,214 @@
+#!/bin/bash
+#
+# mailq-inspect -- Interactively inspect Exim's mail queue
+#
+# Usage:
+# - call with message IDs on command line:
+#       > mailq-inspect id1 id2 id3 ...
+# - call without IDs to fetch them via exiqgrep
+#       > mailq-inspect
+#
+# A prompt will give you the available options:
+# command         description              Exim switch   script alias
+#   [d]eliver      attempt delivery         -M            exim_deliver
+#   [l]og          show mailq log           -Mvl          exim_log
+#   [h]eaders      show headers             -Mvh          exim_message_headers
+#   [b]ody         show body                -Mvb          exim_message_body
+#   [c]complete    show complete message    -Mvc          exim_message_complete
+#   [D]elete       delete from queue        -Mrm          exim_delete
+#   [T]haw         thaw frozen message      -Mt           exim_thaw
+#   [S]ave         save message to file     -Mvc          exim_save
+#   enter-[i]ds    enter new message IDs
+#   [n]ext-id      go to next message
+#   ids-mail[Q]    fetch IDs from exigrep
+#   [q]uit         quit mailq-inspect
+#
+# Every time you choose a message ID a default action will be run. You can change
+# it via the environment variable "DEFAULT_ACTION"; just set it to any of the
+# exim_XXX aliases above, e.g.,
+#   > DEFAULT_ACTION=exim_log mailq-inspect ...
+# The default value is "exim_message_body".
+#
+# When saving a message, the complete message (via exim -Mvc) will be written to
+# the file $TMPDIR/mailq-inspect.MSGID.
+#
+# By default this script uses /usr/sbin/exim4 and /usr/sbin/exiqgrep.
+# You can change those paths by setting the environment variables
+# EXIM and EXIQGREP, respectively, before running it, e.g.,
+#   > EXIM=/usr/local/sbin/exim4 mailq-inspect ...
+#
+# @author Alexandros Panagiotidis <alexandros@panagiotidis.eu>
+# @license MIT
+# @see https://github.com/alexandrospanagiotidis/mailq-inspect
+#
+
+set -o errexit
+set -o nounset
+
+DEFAULT_ACTION="${DEFAULT_ACTION:-exim_message_body}"
+TMPDIR="${TMPDIR:-/tmp}"
+
+EXIM="/usr/sbin/exim4"
+EXIQGREP="/usr/sbin/exiqgrep"
+
+declare -a MSGIDS
+MSGIDS=()
+
+# call_exim <msg-id> <exim4 args>
+call_exim()
+{
+${EXIM} -v "$@"
+}
+
+exim_deliver()
+{
+echo "=== ${1} DELIVERY ATTEMPT"
+call_exim "-M" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_log()
+{
+echo "=== ${1} LOG"
+call_exim "-Mvl" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_message_headers()
+{
+echo "=== ${1} MESSAGE HEADERS"
+call_exim "-Mvh" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_message_body()
+{
+echo "=== ${1} MESSAGE BODY"
+call_exim "-Mvb" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_message_complete()
+{
+echo "=== ${1} COMPLETE MESSAGE"
+call_exim "-Mvc" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_delete()
+{
+echo "=== ${1} DELETING MESSAGE"
+call_exim "-Mrm" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_thaw()
+{
+echo "=== ${1} THAWING MESSAGE"
+call_exim "-Mt" "${1}"
+echo "=== ${1} FIN"
+}
+
+exim_save()
+{
+TARGET="${TMPDIR}/mailq-inspect.${ID}"
+echo "=== ${1} SAVING MESSAGE TO ${TARGET}"
+call_exim "-Mvc" "${1}" > "${TARGET}"
+}
+
+read_msgids()
+{
+read -r -p "Message ID: " -a MSGIDS
+}
+
+next_msgid()
+{
+  if [[ ${#MSGIDS[@]} -le 0 ]]
+  then
+    read_msgids
+  fi
+  
+  ID="${MSGIDS[0]}"
+  MSGIDS=("${MSGIDS[@]:1}")
+
+  # default action
+  ${DEFAULT_ACTION} "${ID}"
+  true
+}
+
+exiqgrep_get_msgids()
+{
+${EXIQGREP} -i | readarray MSGIDS
+}
+
+if [[ $# -le 0 ]]
+then
+# If no msg-ids are given on command line, we ask exiqgrep for them
+  exiqgrep_get_msgids
+else
+# Use msg-ids on command line
+  MSGIDS=("$@")
+fi
+
+next_msgid
+
+while true
+do
+  NUM_IDS="${#MSGIDS[@]}"
+  NUM_IDS="${NUM_IDS:-0}"
+  read -r -n 1 -p "${ID} (${NUM_IDS}) [d]eliver  [l]og  [h]eaders  [b]ody  [c]complete  [D]elete  [T]haw  [S]ave  enter-[i]ds  [n]ext-id  ids-mail[Q]  [q]uit: " COMMAND
+  echo
+  
+  case "${COMMAND}" in
+    "q")
+      exit 0
+      ;;
+    
+    "i")
+      read_msgids
+      next_msgid
+      ;;
+
+    "n")
+      next_msgid
+      ;;
+      
+    "Q")
+      exiqgrep_get_msgids
+      next_msgid
+      ;;
+      
+    "d")
+      exim_deliver "${ID}"
+      ;;
+    
+    "l")
+      exim_log "${ID}"
+      ;;
+      
+    "h")
+      exim_message_headers "${ID}"
+      ;;
+
+    "b")
+      exim_message_body "${ID}"
+      ;;
+
+    "c")
+      exim_message_complete "${ID}"
+      ;;
+    
+    "D")
+      exim_delete "${ID}"
+      next_msgid
+      ;;
+      
+    "T")
+      exim_thaw "${ID}"
+      ;;
+      
+    "S")
+      exim_save "${ID}"
+      ;;
+  esac
+done
