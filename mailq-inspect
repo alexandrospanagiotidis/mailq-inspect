@@ -123,10 +123,10 @@ read -r -p "Message ID: " -a MSGIDS
 
 next_msgid()
 {
-  if [[ ${#MSGIDS[@]} -le 0 ]]
-  then
+  while [[ ${#MSGIDS[@]} -le 0 ]]
+  do
     read_msgids
-  fi
+  done
   
   ID="${MSGIDS[0]}"
   MSGIDS=("${MSGIDS[@]:1}")
@@ -138,7 +138,7 @@ next_msgid()
 
 exiqgrep_get_msgids()
 {
-${EXIQGREP} -i | readarray MSGIDS
+MSGIDS=($(${EXIQGREP} -i))
 }
 
 if [[ $# -le 0 ]]
