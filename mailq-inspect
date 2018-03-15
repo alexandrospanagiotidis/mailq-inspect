@@ -5,7 +5,7 @@
 # Usage:
 # - call with message IDs on command line:
 #       > mailq-inspect id1 id2 id3 ...
-# - call without IDs to fetch them via exiqgrep
+# - call without IDs to fetch them via mailq
 #       > mailq-inspect
 #
 # A prompt will give you the available options:
@@ -20,7 +20,7 @@
 #   [S]ave         save message to file     -Mvc          exim_save
 #   enter-[i]ds    enter new message IDs
 #   [n]ext-id      go to next message
-#   ids-mail[Q]    fetch IDs from exigrep
+#   ids-mail[Q]    fetch IDs from mailq     -bp           exim_get_msgids
 #   [q]uit         quit mailq-inspect
 #
 # Every time you choose a message ID a default action will be run. You can change
@@ -32,9 +32,8 @@
 # When saving a message, the complete message (via exim -Mvc) will be written to
 # the file $TMPDIR/mailq-inspect.MSGID.
 #
-# By default this script uses /usr/sbin/exim4 and /usr/sbin/exiqgrep.
-# You can change those paths by setting the environment variables
-# EXIM and EXIQGREP, respectively, before running it, e.g.,
+# By default this script uses /usr/sbin/exim4. You can change the path by setting
+# the environment variable EXIM, e.g.,
 #   > EXIM=/usr/local/sbin/exim4 mailq-inspect ...
 #
 # @author Alexandros Panagiotidis <alexandros@panagiotidis.eu>
@@ -49,7 +48,6 @@ DEFAULT_ACTION="${DEFAULT_ACTION:-exim_message_body}"
 TMPDIR="${TMPDIR:-/tmp}"
 
 EXIM="/usr/sbin/exim4"
-EXIQGREP="/usr/sbin/exiqgrep"
 
 declare -a MSGIDS
 MSGIDS=()
@@ -123,28 +121,35 @@ read -r -p "Message ID: " -a MSGIDS
 
 next_msgid()
 {
-  while [[ ${#MSGIDS[@]} -le 0 ]]
-  do
-    read_msgids
-  done
-  
-  ID="${MSGIDS[0]}"
-  MSGIDS=("${MSGIDS[@]:1}")
+while [[ ${#MSGIDS[@]} -le 0 ]]
+do
+  read_msgids
+done
 
-  # default action
-  ${DEFAULT_ACTION} "${ID}"
-  true
+ID="${MSGIDS[0]}"
+MSGIDS=("${MSGIDS[@]:1}")
+
+# default action
+${DEFAULT_ACTION} "${ID}"
+true
 }
 
-exiqgrep_get_msgids()
+exim_get_msgids()
 {
-MSGIDS=($(${EXIQGREP} -i))
+MSGIDS=()
+while read -r LINE
+do
+  if [[ "${LINE}" =~ ([a-zA-Z0-9]{6}-[a-zA-Z0-9]{6}-[a-zA-Z0-9]{2}) ]]
+  then
+    MSGIDS+=("${BASH_REMATCH[0]}")
+  fi
+done < <(call_exim "-bp")
 }
 
 if [[ $# -le 0 ]]
 then
-# If no msg-ids are given on command line, we ask exiqgrep for them
-  exiqgrep_get_msgids
+# If no msg-ids are given on command line, we ask mailq for them
+  exim_get_msgids
 else
 # Use msg-ids on command line
   MSGIDS=("$@")
@@ -174,7 +179,7 @@ do
       ;;
       
     "Q")
-      exiqgrep_get_msgids
+      mailq_get_msgids
       next_msgid
       ;;
       
