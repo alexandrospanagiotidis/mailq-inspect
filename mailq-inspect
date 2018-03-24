@@ -27,10 +27,11 @@
 # it via the environment variable "DEFAULT_ACTION"; just set it to any of the
 # exim_XXX aliases above, e.g.,
 #   > DEFAULT_ACTION=exim_log mailq-inspect ...
-# The default value is "exim_message_body".
+# The default value is "exim_message_headers".
 #
 # When saving a message, the complete message (via exim -Mvc) will be written to
 # the file $TMPDIR/mailq-inspect.MSGID.
+# If $TMPDIR is unset, /tmp will be used.
 #
 # By default this script uses /usr/sbin/exim4. You can change the path by setting
 # the environment variable EXIM, e.g.,
@@ -44,7 +45,9 @@
 set -o errexit
 set -o nounset
 
-DEFAULT_ACTION="${DEFAULT_ACTION:-exim_message_body}"
+DEFAULT_ACTION="${DEFAULT_ACTION:-exim_message_headers}"
+
+# Use /tmp if $TMPDIR is unset
 TMPDIR="${TMPDIR:-/tmp}"
 
 EXIM="/usr/sbin/exim4"
@@ -52,7 +55,7 @@ EXIM="/usr/sbin/exim4"
 declare -a MSGIDS
 MSGIDS=()
 
-# call_exim <msg-id> <exim4 args>
+# call_exim <exim4 args>...
 call_exim()
 {
 ${EXIM} -v "$@"
@@ -131,7 +134,11 @@ MSGIDS=("${MSGIDS[@]:1}")
 
 # default action
 ${DEFAULT_ACTION} "${ID}"
-true
+}
+
+contains_msgid()
+{
+[[ "${1}" =~ ([a-zA-Z0-9]{6}-[a-zA-Z0-9]{6}-[a-zA-Z0-9]{2}) ]]
 }
 
 exim_get_msgids()
@@ -139,9 +146,9 @@ exim_get_msgids()
 MSGIDS=()
 while read -r LINE
 do
-  if [[ "${LINE}" =~ ([a-zA-Z0-9]{6}-[a-zA-Z0-9]{6}-[a-zA-Z0-9]{2}) ]]
+  if contains_msgid "${LINE}"
   then
-    MSGIDS+=("${BASH_REMATCH[0]}")
+    MSGIDS+=("${BASH_REMATCH[1]}")
   fi
 done < <(call_exim "-bp")
 }
