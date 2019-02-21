@@ -186,7 +186,7 @@ do
       ;;
       
     "Q")
-      mailq_get_msgids
+      eximq_get_msgids
       next_msgid
       ;;
       
